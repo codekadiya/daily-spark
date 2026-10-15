@@ -1,94 +1,161 @@
-"""Inspiration Quote web app. Serves a page plus a JSON endpoint.
+"""Daily Spark: generate inspirational quotes, store them, and let people vote.
 
 Runs on 0.0.0.0:$PORT (Roar sets PORT; defaults to 8000 locally).
-    python app.py   ->  http://localhost:8000
+Needs ROAR_API_KEY and DATABASE_URL in the environment (or .env locally).
+
+Routes
+  GET  /                        the page
+  GET  /health                  liveness check
+  GET  /api/quotes              all quotes, top voted first
+  POST /api/quotes              {"theme": "..."} -> generate and store a new quote
+  POST /api/quotes/<id>/vote    {"value": 1 | -1 | 0} -> set or clear this browser's vote
+  GET  /api/quote?theme=...     legacy: generate and store, returns {"quote": "..."}
 """
 
 import json
 import os
+import re
+import threading
+import time
+import uuid
+from collections import defaultdict, deque
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import psycopg
+
+import db
 from quote import generate_quote
 
-PAGE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Daily Spark</title>
-<style>
-  :root { --bg:#f6f1e7; --ink:#1f1b16; --muted:#6b6257; --accent:#c4552d; --card:#fffaf2; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#16130f; --ink:#f2ebe0; --muted:#a39886; --accent:#e07a50; --card:#1f1b16; }
-  }
-  * { box-sizing:border-box; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg);
-         color:var(--ink); font-family: Georgia, "Times New Roman", serif; padding:16px; }
-  main { width:100%; max-width:640px; background:var(--card); border-radius:18px; padding:40px 32px;
-         box-shadow:0 10px 40px rgba(0,0,0,.08); }
-  h1 { margin:0 0 4px; font-size:14px; letter-spacing:.2em; text-transform:uppercase; color:var(--accent);
-       font-family: system-ui, sans-serif; }
-  #quote { font-size:clamp(22px,4.5vw,32px); line-height:1.35; min-height:3.5em; margin:24px 0 32px; }
-  #quote.loading { color:var(--muted); }
-  form { display:flex; gap:10px; flex-wrap:wrap; font-family:system-ui, sans-serif; }
-  input { flex:1 1 200px; padding:12px 14px; border-radius:10px; border:1px solid var(--muted);
-          background:transparent; color:var(--ink); font-size:16px; }
-  button { padding:12px 20px; border:0; border-radius:10px; background:var(--accent); color:#fff;
-           font-size:16px; cursor:pointer; }
-  button:disabled { opacity:.6; cursor:wait; }
-</style></head>
-<body><main>
-  <h1>Daily Spark</h1>
-  <p id="quote" class="loading">Fetching a little inspiration…</p>
-  <form id="f">
-    <input id="theme" placeholder="Theme (optional), e.g. travel" maxlength="60">
-    <button id="go">New quote</button>
-  </form>
-</main>
-<script>
-  const q = document.getElementById('quote'), btn = document.getElementById('go');
-  async function load(theme) {
-    btn.disabled = true; q.className = 'loading'; q.textContent = 'Thinking…';
-    try {
-      const r = await fetch('/api/quote' + (theme ? '?theme=' + encodeURIComponent(theme) : ''));
-      const d = await r.json();
-      q.className = ''; q.textContent = d.quote || d.error || 'Something went wrong.';
-    } catch (e) { q.className = ''; q.textContent = 'Could not reach the server.'; }
-    btn.disabled = false;
-  }
-  document.getElementById('f').addEventListener('submit', e => {
-    e.preventDefault(); load(document.getElementById('theme').value.trim());
-  });
-  load();
-</script></body></html>"""
+PAGE = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
+COOKIE = "ds_voter"
+VOTE_PATH = re.compile(r"^/api/quotes/(\d+)/vote$")
+
+# Generation costs money, so cap it per client IP: 8 quotes per 10 minutes.
+GEN_LIMIT, GEN_WINDOW = 8, 600
+_gen_hits: dict[str, deque] = defaultdict(deque)
+_gen_lock = threading.Lock()
+
+
+def allow_generation(ip: str) -> bool:
+    now = time.monotonic()
+    with _gen_lock:
+        hits = _gen_hits[ip]
+        while hits and now - hits[0] > GEN_WINDOW:
+            hits.popleft()
+        if len(hits) >= GEN_LIMIT:
+            return False
+        hits.append(now)
+        return True
+
+
+def clean_theme(raw) -> str | None:
+    theme = re.sub(r"\s+", " ", str(raw or "")).strip()[:60]
+    return theme or None
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _send(self, code, body, ctype):
+    server_version = "DailySpark"
+
+    # ---- helpers -------------------------------------------------------
+    def _voter(self) -> str:
+        jar = SimpleCookie(self.headers.get("Cookie", ""))
+        vid = jar[COOKIE].value if COOKIE in jar else ""
+        if re.fullmatch(r"[0-9a-f]{32}", vid or ""):
+            self._new_voter = None
+            return vid
+        self._new_voter = uuid.uuid4().hex
+        return self._new_voter
+
+    def _client_ip(self) -> str:
+        fwd = self.headers.get("X-Forwarded-For", "")
+        return fwd.split(",")[0].strip() or self.client_address[0]
+
+    def _body(self) -> dict:
+        length = min(int(self.headers.get("Content-Length") or 0), 4096)
+        if not length:
+            return {}
+        try:
+            data = json.loads(self.rfile.read(length))
+            return data if isinstance(data, dict) else {}
+        except ValueError:
+            return {}
+
+    def _send(self, code, body, ctype="application/json"):
+        if not isinstance(body, str):
+            body = json.dumps(body)
         data = body.encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        if getattr(self, "_new_voter", None):
+            secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
+            self.send_header(
+                "Set-Cookie",
+                f"{COOKIE}={self._new_voter}; Path=/; Max-Age=63072000; HttpOnly; SameSite=Lax{secure}",
+            )
         self.end_headers()
         self.wfile.write(data)
 
+    def _generate(self, theme, voter):
+        if not allow_generation(self._client_ip()):
+            return 429, {"error": "You've made a lot of quotes. Try again in a few minutes."}
+        try:
+            text = generate_quote(theme)
+        except Exception as e:
+            return 502, {"error": f"The quote service didn't respond ({type(e).__name__}). Try again."}
+        if not text:
+            return 502, {"error": "The quote came back empty. Try again."}
+        return 201, db.add_quote(text, theme, voter)
+
+    # ---- routes --------------------------------------------------------
     def do_GET(self):
         url = urlparse(self.path)
+        voter = self._voter()
         if url.path == "/":
             self._send(200, PAGE, "text/html; charset=utf-8")
         elif url.path == "/health":
             self._send(200, "ok", "text/plain")
-        elif url.path == "/api/quote":
-            theme = (parse_qs(url.query).get("theme", [""])[0] or "").strip()[:60] or None
-            try:
-                body, code = {"quote": generate_quote(theme)}, 200
-            except Exception as e:  # keep the page alive on API errors
-                body, code = {"error": f"Quote service error: {type(e).__name__}"}, 502
-            self._send(code, json.dumps(body), "application/json")
+        elif url.path == "/api/quotes":
+            self._send(200, {"quotes": db.list_quotes(voter)})
+        elif url.path == "/api/quote":  # legacy endpoint
+            theme = clean_theme(parse_qs(url.query).get("theme", [""])[0])
+            code, body = self._generate(theme, voter)
+            self._send(code, {"quote": body["text"]} if code == 201 else body)
         else:
-            self._send(404, "Not found", "text/plain")
+            self._send(404, {"error": "Not found"})
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        voter = self._voter()
+        if path == "/api/quotes":
+            code, body = self._generate(clean_theme(self._body().get("theme")), voter)
+            self._send(code, body)
+            return
+        m = VOTE_PATH.match(path)
+        if m:
+            value = self._body().get("value")
+            if value not in (1, -1, 0):
+                self._send(400, {"error": "value must be 1, -1 or 0"})
+                return
+            try:
+                quote = db.set_vote(int(m.group(1)), voter, value)
+            except psycopg.errors.ForeignKeyViolation:
+                quote = None
+            self._send(200, quote) if quote else self._send(404, {"error": "Quote not found"})
+            return
+        self._send(404, {"error": "Not found"})
+
+    def log_message(self, fmt, *args):  # quieter logs: skip health checks
+        if "/health" not in (args[0] if args else ""):
+            super().log_message(fmt, *args)
 
 
 if __name__ == "__main__":
+    db.init()
     port = int(os.getenv("PORT", "8000"))
-    print(f"Listening on 0.0.0.0:{port}")
+    print(f"Listening on 0.0.0.0:{port}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()

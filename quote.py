@@ -35,7 +35,8 @@ def generate_quote(theme: str | None = None) -> str:
         ],
         max_tokens=800,
     )
-    return resp.choices[0].message.content.strip()
+    text = (resp.choices[0].message.content or "").strip()
+    return text.strip('"“” ').strip()
 
 
 if __name__ == "__main__":
