@@ -522,7 +522,11 @@
       const card = makeCard(data);
       card.classList.add('fresh');
       const art = card.querySelector('.art');
-      if (art) { art.loading = 'eager'; await art.decode().catch(() => {}); }
+      if (art) {
+        art.loading = 'eager';
+        // wait briefly for the painting so it appears with the card, but never hang
+        await Promise.race([art.decode().catch(() => {}), new Promise(r => setTimeout(r, 3000))]);
+      }
       placeholder.replaceWith(card);
       say(data.has_image
         ? 'Your new quote is first. It takes its ranked place next time the page loads.'

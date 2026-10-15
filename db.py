@@ -44,6 +44,16 @@ def connect():
 def init():
     with connect() as conn:
         conn.execute(SCHEMA)
+        # One-time clean slate for the painting release. The marker row makes
+        # sure this runs exactly once, never on later restarts or deploys.
+        conn.execute("CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, ran_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+        with conn.transaction():
+            done = conn.execute(
+                "INSERT INTO migrations (name) VALUES ('2026-10-clear-for-paintings') ON CONFLICT DO NOTHING RETURNING name"
+            ).fetchone()
+            if done:
+                conn.execute("TRUNCATE votes, quotes RESTART IDENTITY")
+                print("migration: cleared old quotes for the painting release", flush=True)
 
 
 def _shape(row):
