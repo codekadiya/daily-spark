@@ -19,11 +19,13 @@ CREATE TABLE IF NOT EXISTS votes (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (quote_id, voter_id)
 );
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS image      BYTEA;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS image_type TEXT;
 """
 
 # Up, down and the current visitor's own vote for each quote.
 SELECT_QUOTES = """
-SELECT q.id, q.text, q.theme, q.created_at,
+SELECT q.id, q.text, q.theme, q.created_at, (q.image IS NOT NULL) AS has_image,
        COALESCE(SUM(CASE WHEN v.value = 1 THEN 1 END), 0)::int  AS up,
        COALESCE(SUM(CASE WHEN v.value = -1 THEN 1 END), 0)::int AS down,
        COALESCE(MAX(CASE WHEN v.voter_id = %(voter)s THEN v.value END), 0)::int AS my_vote
@@ -66,12 +68,22 @@ def get_quote(quote_id, voter):
     return _shape(row) if row else None
 
 
-def add_quote(text, theme, voter):
+def add_quote(text, theme, voter, image=None, image_type=None):
     with connect() as conn:
         qid = conn.execute(
-            "INSERT INTO quotes (text, theme) VALUES (%s, %s) RETURNING id", (text, theme)
+            "INSERT INTO quotes (text, theme, image, image_type) VALUES (%s, %s, %s, %s) RETURNING id",
+            (text, theme, image, image_type),
         ).fetchone()["id"]
     return get_quote(qid, voter)
+
+
+def get_image(quote_id):
+    """Returns (bytes, mime) or None."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT image, image_type FROM quotes WHERE id=%s AND image IS NOT NULL", (quote_id,)
+        ).fetchone()
+    return (bytes(row["image"]), row["image_type"] or "image/jpeg") if row else None
 
 
 def set_vote(quote_id, voter, value):

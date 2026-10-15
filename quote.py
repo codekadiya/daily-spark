@@ -17,7 +17,7 @@ api_key = os.getenv("ROAR_API_KEY")
 if not api_key:
     sys.exit("ROAR_API_KEY missing from .env")
 
-client = OpenAI(base_url="https://api.roar-ai.com/v1", api_key=api_key)
+client = OpenAI(base_url="https://api.roar-ai.com/v1", api_key=api_key, timeout=120)
 
 
 def generate_quote(theme: str | None = None) -> str:

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Daily Spark</title>
-<meta name="description" content="Small, original lines of inspiration. Make one on any theme and vote for the ones that land.">
+<meta name="description" content="Small, original lines of inspiration, each with its own painting. Make one on any theme, vote, and download the ones you love.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,6 +12,7 @@
   :root {
     --paper: #E9E4D8;
     --stock: #F7F3EA;
+    --cream: #FBF7EE;
     --graphite: #2A2724;
     --muted: #6F685D;
     --rule: #CFC7B6;
@@ -32,20 +33,20 @@
     color: var(--graphite);
     font-family: var(--sans);
     background-color: var(--paper);
-    /* faint paper grain */
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .2  0 0 0 0 .18  0 0 0 0 .15  0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   /* ---------- fixed top bar ---------- */
   .bar {
     position: fixed; inset: 0 0 auto 0; z-index: 10;
     min-height: var(--bar-h);
-    background: rgba(233, 228, 216, .9);
+    background: rgba(233, 228, 216, .92);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--rule);
   }
   .bar-inner {
-    max-width: 1280px; margin: 0 auto; min-height: var(--bar-h);
+    max-width: 1320px; margin: 0 auto; min-height: var(--bar-h);
     padding: 12px 24px;
     display: flex; align-items: center; justify-content: space-between; gap: 12px 24px;
     flex-wrap: wrap;
@@ -69,6 +70,7 @@
   input::placeholder { color: #958d80; }
   button { font: inherit; cursor: pointer; }
   .make {
+    display: inline-flex; align-items: center; gap: 8px;
     padding: 12px 18px; white-space: nowrap;
     font-weight: 600; font-size: 15px; letter-spacing: .01em;
     color: var(--stock); background: var(--indigo);
@@ -77,78 +79,134 @@
     transition: transform .08s, box-shadow .08s;
   }
   .make:active { transform: translateY(2px); box-shadow: 0 0 0 #121a30; }
-  .make:disabled { opacity: .65; cursor: progress; }
+  .make:disabled { opacity: .75; cursor: progress; }
   :focus-visible { outline: 2px solid var(--oxblood); outline-offset: 2px; }
 
+  .spinner {
+    width: 16px; height: 16px; flex: none;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   /* ---------- page ---------- */
-  main { max-width: 1280px; margin: 0 auto; padding: calc(var(--bar-h) + 28px) 24px 64px; }
+  main { max-width: 1320px; margin: 0 auto; padding: calc(var(--bar-h) + 28px) 24px 64px; }
   .status { min-height: 1.4em; margin: 0 0 16px; font-size: 14px; color: var(--muted); }
   .status.error { color: var(--oxblood); }
 
-  .grid { columns: 4 280px; column-gap: 20px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-auto-flow: dense;
+    gap: 20px;
+  }
 
+  /* ---------- cards ---------- */
   .card {
     --ink: var(--indigo);
-    break-inside: avoid;
     position: relative;
-    margin: 0 0 20px;
-    padding: 42px 26px 18px 30px;
+    aspect-ratio: 4 / 5;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 22px 22px 14px;
     background: var(--stock);
     border-radius: 2px;
-    box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 1px 2px rgba(42,39,36,.10), 0 10px 24px -14px rgba(42,39,36,.35);
+    box-shadow: 0 1px 2px rgba(42,39,36,.12), 0 12px 28px -14px rgba(42,39,36,.45);
     overflow: hidden;
+    isolation: isolate;
   }
   .card[data-ink="1"] { --ink: var(--oxblood); }
   .card[data-ink="2"] { --ink: var(--forest); }
 
-  /* the pressed quotation mark: the page's one bold move */
-  .card::before {
-    content: "\201C";
-    position: absolute; top: -18px; left: 12px;
-    font-family: var(--serif); font-weight: 600; font-size: 150px; line-height: 1;
-    color: var(--ink); opacity: .14;
-    text-shadow: 0 1px 0 rgba(255,255,255,.9), 0 -1px 0 rgba(0,0,0,.25);
-    pointer-events: none;
+  /* the most loved quote gets a double-size frame on wider screens */
+  @media (min-width: 760px) {
+    .card.top { grid-column: span 2; grid-row: span 2; padding: 34px 34px 18px; }
+    .grid .card.top .quote { font-size: 44px; line-height: 1.18; }
+    .grid .card.top.long .quote { font-size: 32px; line-height: 1.28; }
+    .card.top .mark { font-size: 130px; height: 46px; }
   }
+
+  .art {
+    position: absolute; inset: 0; z-index: -2;
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .card.painted::after {     /* scrim so the words stay readable on any painting */
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background: linear-gradient(180deg, rgba(20,16,12,.05) 0%, rgba(20,16,12,.25) 35%, rgba(20,16,12,.72) 72%, rgba(20,16,12,.86) 100%);
+  }
+
+  /* pressed opening quote mark */
+  .mark {
+    font-family: var(--serif); font-weight: 600; font-size: 96px; line-height: .6;
+    height: 34px; margin-bottom: 6px;
+    color: var(--ink); opacity: .35;
+  }
+  .card.painted .mark { color: var(--cream); opacity: .55; }
+
   .quote {
-    position: relative; margin: 0 0 20px;
+    margin: 0 0 16px;
     font-family: var(--serif); font-style: italic; font-weight: 500;
-    font-size: 25px; line-height: 1.32;
+    font-size: 25px; line-height: 1.26;
     color: var(--ink);
-    hyphens: auto; overflow-wrap: break-word;
+    overflow-wrap: break-word;
   }
-  .card.short .quote { font-size: 31px; line-height: 1.22; }
-  .card.long  .quote { font-size: 21px; line-height: 1.4; }
+  .card.short .quote { font-size: 29px; line-height: 1.2; }
+  .card.long  .quote { font-size: 20px; line-height: 1.32; }
+  .card.painted .quote { color: var(--cream); text-shadow: 0 1px 12px rgba(0,0,0,.45); }
 
   .foot {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding-top: 12px; border-top: 1px solid var(--rule);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding-top: 10px; border-top: 1px solid var(--rule);
   }
-  .theme { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .loved { font-size: 13px; font-weight: 600; color: var(--oxblood); }
-  .votes { display: flex; gap: 6px; flex-shrink: 0; }
-  .vote {
-    display: inline-flex; align-items: center; gap: 6px;
-    min-height: 36px; padding: 6px 10px;
+  .card.painted .foot { border-top-color: rgba(251,247,238,.28); }
+  .theme { min-width: 0; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .loved { font-weight: 600; color: var(--oxblood); }
+  .card.painted .theme { color: rgba(251,247,238,.82); }
+  .card.painted .loved { color: #F3C9A8; }
+  .actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 34px; min-width: 34px; padding: 5px 9px;
     font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums;
-    color: var(--muted); background: transparent;
+    color: var(--muted); background: rgba(247,243,234,.6);
     border: 1px solid var(--rule); border-radius: 3px;
     transition: color .15s, background-color .15s, border-color .15s;
   }
-  .vote svg { width: 16px; height: 16px; }
-  .vote:hover { color: var(--graphite); border-color: var(--muted); }
-  .vote.up[aria-pressed="true"]   { color: var(--stock); background: var(--forest);  border-color: var(--forest); }
-  .vote.down[aria-pressed="true"] { color: var(--stock); background: var(--oxblood); border-color: var(--oxblood); }
+  .btn svg { width: 16px; height: 16px; }
+  .btn:hover { color: var(--graphite); border-color: var(--muted); }
+  .card.painted .btn {
+    color: var(--cream); background: rgba(20,16,12,.32);
+    border-color: rgba(251,247,238,.35);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  .card.painted .btn:hover { background: rgba(20,16,12,.55); border-color: rgba(251,247,238,.7); }
+  .vote.up[aria-pressed="true"],   .card.painted .vote.up[aria-pressed="true"]   { color: var(--cream); background: var(--forest);  border-color: var(--forest); }
+  .vote.down[aria-pressed="true"], .card.painted .vote.down[aria-pressed="true"] { color: var(--cream); background: var(--oxblood); border-color: var(--oxblood); }
+  .save[aria-busy="true"] { cursor: progress; }
 
-  /* a quote the visitor just made: printed onto the page */
-  .card.fresh { animation: press .9s ease-out both; box-shadow: 0 0 0 2px var(--ink), 0 14px 30px -14px rgba(42,39,36,.45); }
+  /* a quote the visitor just made */
+  .card.fresh { animation: press .9s ease-out both; outline: 3px solid var(--indigo); outline-offset: 3px; }
   @keyframes press {
-    0%   { opacity: 0; transform: scale(1.04); filter: blur(2px); }
-    60%  { opacity: 1; transform: scale(.99);  filter: blur(0); }
+    0%   { opacity: 0; transform: scale(1.03); filter: blur(3px); }
+    60%  { opacity: 1; transform: scale(.995); filter: blur(0); }
     100% { transform: scale(1); }
   }
 
+  /* placeholder while a quote and its painting are being made */
+  .card.pending {
+    justify-content: center; align-items: center; text-align: center; gap: 14px;
+    color: var(--muted);
+    background:
+      repeating-linear-gradient(135deg, transparent 0 14px, rgba(42,39,36,.035) 14px 15px),
+      var(--stock);
+    border: 1px dashed var(--rule);
+  }
+  .card.pending .spinner { width: 28px; height: 28px; color: var(--indigo); }
+  .card.pending p { margin: 0; max-width: 22ch; font-family: var(--serif); font-style: italic; font-size: 21px; line-height: 1.3; color: var(--graphite); }
+  .card.pending small { font-size: 13px; }
+
   .empty {
+    grid-column: 1 / -1;
     max-width: 30ch; margin: 12vh auto 0; text-align: center;
     font-family: var(--serif); font-style: italic; font-size: 28px; line-height: 1.3; color: var(--muted);
   }
@@ -157,13 +215,14 @@
     .bar-inner { padding: 12px 16px; }
     .brand { font-size: 30px; }
     form { flex-basis: 100%; max-width: none; }
-    main { padding-left: 16px; padding-right: 16px; }
-    .card { padding: 38px 20px 16px 24px; }
     .make { padding: 12px 14px; }
+    main { padding-left: 16px; padding-right: 16px; }
+    .grid { grid-template-columns: 1fr; }
   }
   @media (prefers-reduced-motion: reduce) {
     .card.fresh { animation: none; }
-    .make, .vote { transition: none; }
+    .make, .btn { transition: none; }
+    .spinner { animation-duration: 2.4s; }
   }
 </style>
 </head>
@@ -172,7 +231,7 @@
   <div class="bar-inner">
     <h1 class="brand">Daily <span>Spark</span></h1>
     <form id="make-form" autocomplete="off">
-      <label for="theme" class="sr-only" style="position:absolute;left:-9999px">Theme</label>
+      <label for="theme" class="sr-only">Theme</label>
       <input id="theme" name="theme" maxlength="60" placeholder="Pick a theme, like courage or travel">
       <button class="make" id="make-btn" type="submit">Make a quote</button>
     </form>
@@ -186,17 +245,21 @@
 
 <template id="card-tpl">
   <article class="card">
+    <div class="mark" aria-hidden="true">&ldquo;</div>
     <blockquote class="quote"></blockquote>
     <div class="foot">
       <span class="theme"></span>
-      <div class="votes">
-        <button class="vote up" type="button" aria-pressed="false">
+      <div class="actions">
+        <button class="btn vote up" type="button" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 10v11H3V10h4Zm0 0 4-8a3 3 0 0 1 3 3v4h5.5a2 2 0 0 1 2 2.3l-1.3 8A2 2 0 0 1 18.2 21H7"/></svg>
           <span class="n">0</span>
         </button>
-        <button class="vote down" type="button" aria-pressed="false">
+        <button class="btn vote down" type="button" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V3h4v11h-4Zm0 0-4 8a3 3 0 0 1-3-3v-4H4.5a2 2 0 0 1-2-2.3l1.3-8A2 2 0 0 1 5.8 3H17"/></svg>
           <span class="n">0</span>
+        </button>
+        <button class="btn save" type="button" aria-label="Download as image" title="Download as image">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
         </button>
       </div>
     </div>
@@ -209,6 +272,7 @@
   const form = document.getElementById('make-form');
   const btn = document.getElementById('make-btn');
   const tpl = document.getElementById('card-tpl');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function say(msg, isError = false) {
     statusEl.textContent = msg || '';
@@ -222,7 +286,6 @@
   }
 
   function fill(card, q) {
-    card.querySelector('.theme').textContent = q.theme ? q.theme : '';
     const [up, down] = card.querySelectorAll('.vote');
     up.querySelector('.n').textContent = q.up;
     down.querySelector('.n').textContent = q.down;
@@ -239,25 +302,36 @@
     card.dataset.ink = q.id % 3;
     const len = q.text.length;
     if (len < 70) card.classList.add('short');
-    else if (len > 150) card.classList.add('long');
+    else if (len > 140) card.classList.add('long');
+    if (q.has_image) {
+      const img = document.createElement('img');
+      img.className = 'art';
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.src = `/api/quotes/${q.id}/image`;
+      card.prepend(img);
+      card.classList.add('painted');
+    }
     card.querySelector('.quote').textContent = q.text;
+    card.querySelector('.theme').textContent = q.theme || '';
     fill(card, q);
     const [up, down] = card.querySelectorAll('.vote');
     up.addEventListener('click', () => vote(card, 1));
     down.addEventListener('click', () => vote(card, -1));
+    card.querySelector('.save').addEventListener('click', (e) => download(card, e.currentTarget));
     return card;
   }
 
   function markMostLoved() {
-    grid.querySelectorAll('.loved').forEach(el => el.remove());
-    const first = grid.querySelector('.card:not(.fresh)');
+    grid.querySelectorAll('.card.top').forEach(c => c.classList.remove('top'));
+    grid.querySelectorAll('.loved').forEach(el => { el.classList.remove('loved'); el.textContent = el.closest('.card')._q.theme || ''; });
+    const first = grid.querySelector('.card:not(.fresh):not(.pending)');
     if (first && first._q && first._q.up - first._q.down > 0) {
-      const tag = document.createElement('span');
-      tag.className = 'loved';
-      tag.textContent = 'Most loved';
+      first.classList.add('top');
       const theme = first.querySelector('.theme');
-      theme.replaceWith(tag);
-      if (first._q.theme) tag.textContent = `Most loved, ${first._q.theme}`;
+      theme.classList.add('loved');
+      theme.textContent = first._q.theme ? `Most loved, ${first._q.theme}` : 'Most loved';
     }
   }
 
@@ -277,8 +351,7 @@
 
   async function vote(card, dir) {
     const prev = card._q;
-    const value = prev.my_vote === dir ? 0 : dir;      // clicking your current vote clears it
-    // optimistic update
+    const value = prev.my_vote === dir ? 0 : dir;   // clicking your current vote clears it
     const next = { ...prev, my_vote: value };
     if (prev.my_vote === 1) next.up--;
     if (prev.my_vote === -1) next.down--;
@@ -299,27 +372,164 @@
     }
   }
 
+  /* ---------- download: compose a 1080x1350 image ---------- */
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  function wrap(ctx, text, maxWidth) {
+    const words = text.split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const test = line ? `${line} ${w}` : w;
+      if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = w; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  async function compose(q) {
+    const W = 1080, H = 1350, PAD = 96;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    await Promise.all([
+      document.fonts.load('italic 500 72px "Cormorant Garamond"'),
+      document.fonts.load('italic 600 40px "Cormorant Garamond"'),
+      document.fonts.load('500 24px "Work Sans"'),
+    ]).catch(() => {});
+
+    let painted = false;
+    if (q.has_image) {
+      try {
+        const img = await loadImage(`/api/quotes/${q.id}/image`);
+        const s = Math.max(W / img.width, H / img.height);
+        const w = img.width * s, h = img.height * s;
+        ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+        const g = ctx.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, 'rgba(20,16,12,0.08)');
+        g.addColorStop(0.38, 'rgba(20,16,12,0.30)');
+        g.addColorStop(0.72, 'rgba(20,16,12,0.74)');
+        g.addColorStop(1, 'rgba(20,16,12,0.88)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+        painted = true;
+      } catch { /* fall back to paper */ }
+    }
+    if (!painted) {
+      ctx.fillStyle = '#F7F3EA';
+      ctx.fillRect(0, 0, W, H);
+    }
+    const ink = painted ? '#FBF7EE' : ['#1F2B4D', '#7A1F2B', '#2F4A3A'][q.id % 3];
+
+    // Fit the quote: largest size whose block fits the space above the footer.
+    const maxW = W - PAD * 2, maxH = 760, bottom = H - 210;
+    let size = 78, lines, lh;
+    for (; size >= 36; size -= 2) {
+      ctx.font = `italic 500 ${size}px "Cormorant Garamond", Georgia, serif`;
+      lines = wrap(ctx, q.text, maxW);
+      lh = size * 1.24;
+      if (lines.length * lh <= maxH) break;
+    }
+    const top = bottom - lines.length * lh;
+
+    ctx.textBaseline = 'alphabetic';
+    if (painted) { ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 18; }
+
+    // opening mark
+    ctx.fillStyle = ink;
+    ctx.globalAlpha = painted ? 0.6 : 0.35;
+    ctx.font = `600 ${Math.round(size * 2.6)}px "Cormorant Garamond", Georgia, serif`;
+    ctx.fillText('“', PAD - 8, top + size * 0.9);
+    ctx.globalAlpha = 1;
+
+    ctx.font = `italic 500 ${size}px "Cormorant Garamond", Georgia, serif`;
+    lines.forEach((l, i) => ctx.fillText(l, PAD, top + size * 1.55 + i * lh));
+    ctx.shadowBlur = 0;
+
+    // footer mark
+    const fy = H - 96;
+    ctx.globalAlpha = painted ? 0.4 : 0.5;
+    ctx.fillStyle = painted ? '#FBF7EE' : '#CFC7B6';
+    ctx.fillRect(PAD, fy - 52, maxW, 2);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = painted ? '#FBF7EE' : '#1F2B4D';
+    ctx.font = 'italic 600 40px "Cormorant Garamond", Georgia, serif';
+    ctx.fillText('Daily Spark', PAD, fy);
+    ctx.font = '500 24px "Work Sans", system-ui, sans-serif';
+    ctx.fillStyle = painted ? 'rgba(251,247,238,0.85)' : '#6F685D';
+    ctx.textAlign = 'right';
+    ctx.fillText(location.host, W - PAD, fy - 4);
+    ctx.textAlign = 'left';
+
+    return new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
+  }
+
+  async function download(card, button) {
+    if (button.getAttribute('aria-busy') === 'true') return;
+    button.setAttribute('aria-busy', 'true');
+    try {
+      const blob = await compose(card._q);
+      if (!blob) throw new Error();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `daily-spark-${card._q.id}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch {
+      say('The image didn’t download. Try again.', true);
+    } finally {
+      button.removeAttribute('aria-busy');
+    }
+  }
+
+  /* ---------- make a quote ---------- */
+  function pendingCard() {
+    const el = document.createElement('div');
+    el.className = 'card pending';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '<span class="spinner"></span><p>Writing your quote and painting it</p><small>This takes about 20 seconds</small>';
+    return el;
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const theme = form.theme.value.trim();
     btn.disabled = true;
-    btn.textContent = 'Making…';
-    say('');
+    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span>Painting…';
+    say('Making your quote and its painting. This takes about 20 seconds.');
+    grid.querySelector('.empty')?.remove();
+    const placeholder = pendingCard();
+    grid.prepend(placeholder);
+    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
     try {
       const r = await fetch('/api/quotes', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ theme }),
       });
-      const data = await r.json();
+      const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || 'Something went wrong. Try again.');
-      grid.querySelector('.empty')?.remove();
       const card = makeCard(data);
       card.classList.add('fresh');
-      grid.prepend(card);
-      window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-      say('Your new quote is first. It takes its ranked place next time the page loads.');
+      const art = card.querySelector('.art');
+      if (art) { art.loading = 'eager'; await art.decode().catch(() => {}); }
+      placeholder.replaceWith(card);
+      say(data.has_image
+        ? 'Your new quote is first. It takes its ranked place next time the page loads.'
+        : 'Your quote is saved, but the painting didn’t come through this time.');
     } catch (err) {
+      placeholder.remove();
+      showEmpty();
       say(err.message, true);
     } finally {
       btn.disabled = false;

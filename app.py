@@ -9,6 +9,7 @@ Routes
   GET  /api/quotes              all quotes, top voted first
   POST /api/quotes              {"theme": "..."} -> generate and store a new quote
   POST /api/quotes/<id>/vote    {"value": 1 | -1 | 0} -> set or clear this browser's vote
+  GET  /api/quotes/<id>/image   the quote's painting (JPEG/PNG)
   GET  /api/quote?theme=...     legacy: generate and store, returns {"quote": "..."}
 """
 
@@ -27,11 +28,13 @@ from urllib.parse import parse_qs, urlparse
 import psycopg
 
 import db
+from painting import paint
 from quote import generate_quote
 
 PAGE = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 COOKIE = "ds_voter"
 VOTE_PATH = re.compile(r"^/api/quotes/(\d+)/vote$")
+IMAGE_PATH = re.compile(r"^/api/quotes/(\d+)/image$")
 
 # Generation costs money, so cap it per client IP: 8 quotes per 10 minutes.
 GEN_LIMIT, GEN_WINDOW = 8, 600
@@ -109,7 +112,12 @@ class Handler(BaseHTTPRequestHandler):
             return 502, {"error": f"The quote service didn't respond ({type(e).__name__}). Try again."}
         if not text:
             return 502, {"error": "The quote came back empty. Try again."}
-        return 201, db.add_quote(text, theme, voter)
+        try:
+            image, mime = paint(text, theme)
+        except Exception as e:  # keep the quote even if the painting fails
+            print(f"painting failed: {type(e).__name__}: {e}", flush=True)
+            image, mime = None, None
+        return 201, db.add_quote(text, theme, voter, image, mime)
 
     # ---- routes --------------------------------------------------------
     def do_GET(self):
@@ -121,6 +129,18 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, "ok", "text/plain")
         elif url.path == "/api/quotes":
             self._send(200, {"quotes": db.list_quotes(voter)})
+        elif IMAGE_PATH.match(url.path):
+            found = db.get_image(int(IMAGE_PATH.match(url.path).group(1)))
+            if not found:
+                self._send(404, {"error": "No painting for this quote"})
+                return
+            data, mime = found
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.end_headers()
+            self.wfile.write(data)
         elif url.path == "/api/quote":  # legacy endpoint
             theme = clean_theme(parse_qs(url.query).get("theme", [""])[0])
             code, body = self._generate(theme, voter)
