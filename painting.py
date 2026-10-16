@@ -3,6 +3,8 @@
 import base64
 import random
 
+import openai
+
 from quote import client
 
 MODEL = "gpt-image-1-mini"
@@ -35,14 +37,15 @@ def paint(quote: str, theme: str | None) -> tuple[bytes, str]:
     """Returns (image_bytes, mime_type)."""
     prompt = build_prompt(quote, theme)
     try:
-        resp = client.images.generate(
+        resp = client.with_options(timeout=90, max_retries=0).images.generate(
             model=MODEL, prompt=prompt, size=SIZE, quality=QUALITY, n=1,
             output_format="jpeg", output_compression=82,
         )
         mime = "image/jpeg"
-    except Exception:
+    except openai.BadRequestError:
         # Some gateways don't accept output_format; fall back to the default (PNG).
-        resp = client.images.generate(model=MODEL, prompt=prompt, size=SIZE, quality=QUALITY, n=1)
+        # (Timeouts are not retried, so a slow model can't double the wait.)
+        resp = client.with_options(timeout=90, max_retries=0).images.generate(model=MODEL, prompt=prompt, size=SIZE, quality=QUALITY, n=1)
         mime = "image/png"
     item = resp.data[0]
     if getattr(item, "b64_json", None):

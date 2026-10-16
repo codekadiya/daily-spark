@@ -19,4 +19,4 @@ API
 
 Downloads are composed in the browser: 1080x1350 JPEG with the painting, quote and a Daily Spark mark.
 
-Narration voice is picked per quote by `gpt-oss-20b` from tts-1's six voices to match its mood (see `voice.py`).
+Narration uses one tts-1 voice (`fable`) for every quote; change `VOICE` in `voice.py` to switch.
