@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS votes (
 );
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS image      BYTEA;
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS image_type TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS audio      BYTEA;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS audio_type TEXT;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS voice      TEXT;
 """
 
 # Up, down and the current visitor's own vote for each quote.
@@ -109,3 +112,27 @@ def set_vote(quote_id, voter, value):
                 (quote_id, voter, value),
             )
     return get_quote(quote_id, voter)
+
+
+def get_audio(quote_id):
+    """Cached narration: (bytes, mime) or None."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT audio, audio_type FROM quotes WHERE id=%s AND audio IS NOT NULL", (quote_id,)
+        ).fetchone()
+    return (bytes(row["audio"]), row["audio_type"] or "audio/mpeg") if row else None
+
+
+def get_text(quote_id):
+    """(text, theme) or None."""
+    with connect() as conn:
+        row = conn.execute("SELECT text, theme FROM quotes WHERE id=%s", (quote_id,)).fetchone()
+    return (row["text"], row["theme"]) if row else None
+
+
+def save_audio(quote_id, audio, mime, voice):
+    with connect() as conn:
+        conn.execute(
+            "UPDATE quotes SET audio=%s, audio_type=%s, voice=%s WHERE id=%s",
+            (audio, mime, voice, quote_id),
+        )

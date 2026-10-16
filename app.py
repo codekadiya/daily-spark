@@ -10,6 +10,7 @@ Routes
   POST /api/quotes              {"theme": "..."} -> generate and store a new quote
   POST /api/quotes/<id>/vote    {"value": 1 | -1 | 0} -> set or clear this browser's vote
   GET  /api/quotes/<id>/image   the quote's painting (JPEG/PNG)
+  GET  /api/quotes/<id>/audio   the quote read aloud (made on first play, then cached)
   GET  /api/quote?theme=...     legacy: generate and store, returns {"quote": "..."}
 """
 
@@ -30,11 +31,22 @@ import psycopg
 import db
 from painting import paint
 from quote import generate_quote
+from voice import speak
 
 PAGE = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
 COOKIE = "ds_voter"
 VOTE_PATH = re.compile(r"^/api/quotes/(\d+)/vote$")
 IMAGE_PATH = re.compile(r"^/api/quotes/(\d+)/image$")
+AUDIO_PATH = re.compile(r"^/api/quotes/(\d+)/audio$")
+
+# One narration per quote: concurrent first plays wait for the same generation.
+_audio_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
+_audio_locks_guard = threading.Lock()
+
+
+def audio_lock(quote_id: int) -> threading.Lock:
+    with _audio_locks_guard:
+        return _audio_locks[quote_id]
 
 # Generation costs money, so cap it per client IP: 8 quotes per 10 minutes.
 GEN_LIMIT, GEN_WINDOW = 8, 600
@@ -119,6 +131,34 @@ class Handler(BaseHTTPRequestHandler):
             image, mime = None, None
         return 201, db.add_quote(text, theme, voter, image, mime)
 
+    def _serve_media(self, data, mime):
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_audio(self, quote_id):
+        cached = db.get_audio(quote_id)
+        if not cached:
+            with audio_lock(quote_id):
+                cached = db.get_audio(quote_id)  # another request may have just made it
+                if not cached:
+                    found = db.get_text(quote_id)
+                    if not found:
+                        self._send(404, {"error": "Quote not found"})
+                        return
+                    try:
+                        audio, mime, voice = speak(*found)
+                    except Exception as e:
+                        print(f"narration failed: {type(e).__name__}: {e}", flush=True)
+                        self._send(502, {"error": "The voice service didn't respond. Try again."})
+                        return
+                    db.save_audio(quote_id, audio, mime, voice)
+                    cached = (audio, mime)
+        self._serve_media(*cached)
+
     # ---- routes --------------------------------------------------------
     def do_GET(self):
         url = urlparse(self.path)
@@ -141,6 +181,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
             self.end_headers()
             self.wfile.write(data)
+        elif AUDIO_PATH.match(url.path):
+            self._serve_audio(int(AUDIO_PATH.match(url.path).group(1)))
         elif url.path == "/api/quote":  # legacy endpoint
             theme = clean_theme(parse_qs(url.query).get("theme", [""])[0])
             code, body = self._generate(theme, voter)

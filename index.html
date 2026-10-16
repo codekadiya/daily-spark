@@ -183,6 +183,11 @@
   .vote.up[aria-pressed="true"],   .card.painted .vote.up[aria-pressed="true"]   { color: var(--cream); background: var(--forest);  border-color: var(--forest); }
   .vote.down[aria-pressed="true"], .card.painted .vote.down[aria-pressed="true"] { color: var(--cream); background: var(--oxblood); border-color: var(--oxblood); }
   .save[aria-busy="true"] { cursor: progress; }
+  .listen .i-stop, .listen .i-wait { display: none; }
+  .listen.loading .i-play, .listen.playing .i-play { display: none; }
+  .listen.loading .i-wait { display: block; width: 14px; height: 14px; }
+  .listen.playing .i-stop { display: block; }
+  .listen.playing, .card.painted .listen.playing { color: var(--cream); background: var(--indigo); border-color: var(--indigo); }
 
   /* a quote the visitor just made */
   .card.fresh { animation: press .9s ease-out both; outline: 3px solid var(--indigo); outline-offset: 3px; }
@@ -258,6 +263,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V3h4v11h-4Zm0 0-4 8a3 3 0 0 1-3-3v-4H4.5a2 2 0 0 1-2-2.3l1.3-8A2 2 0 0 1 5.8 3H17"/></svg>
           <span class="n">0</span>
         </button>
+        <button class="btn listen" type="button" aria-label="Listen to this quote" title="Listen">
+          <svg class="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+          <svg class="i-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+          <span class="spinner i-wait" aria-hidden="true"></span>
+        </button>
         <button class="btn save" type="button" aria-label="Download as image" title="Download as image">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
         </button>
@@ -319,6 +329,7 @@
     const [up, down] = card.querySelectorAll('.vote');
     up.addEventListener('click', () => vote(card, 1));
     down.addEventListener('click', () => vote(card, -1));
+    card.querySelector('.listen').addEventListener('click', (e) => listen(card, e.currentTarget));
     card.querySelector('.save').addEventListener('click', (e) => download(card, e.currentTarget));
     return card;
   }
@@ -369,6 +380,48 @@
     } catch {
       fill(card, prev);
       say('Your vote didn’t save. Try again.', true);
+    }
+  }
+
+  /* ---------- listen: one shared player, audio made on first play then cached ---------- */
+  const player = new Audio();
+  player.preload = 'none';
+  let playingBtn = null;
+
+  function resetListen(btn) {
+    if (!btn) return;
+    btn.classList.remove('loading', 'playing');
+    btn.setAttribute('aria-label', 'Listen to this quote');
+    btn.title = 'Listen';
+  }
+  function stopPlayer() {
+    player.pause();
+    resetListen(playingBtn);
+    playingBtn = null;
+  }
+  player.addEventListener('ended', stopPlayer);
+  player.addEventListener('error', () => {
+    if (playingBtn) say('Couldn\u2019t play this quote. Try again.', true);
+    stopPlayer();
+  });
+
+  async function listen(card, btn) {
+    if (playingBtn === btn) { stopPlayer(); return; }   // second click stops
+    stopPlayer();
+    playingBtn = btn;
+    btn.classList.add('loading');
+    btn.setAttribute('aria-label', 'Loading the voice');
+    player.src = `/api/quotes/${card._q.id}/audio`;
+    try {
+      await player.play();             // first play may take a few seconds while the voice is made
+      if (playingBtn !== btn) return;
+      btn.classList.remove('loading');
+      btn.classList.add('playing');
+      btn.setAttribute('aria-label', 'Stop');
+      btn.title = 'Stop';
+    } catch (err) {
+      if (playingBtn === btn && err.name !== 'AbortError') say('Couldn\u2019t play this quote. Try again.', true);
+      if (playingBtn === btn) stopPlayer();
     }
   }
 
