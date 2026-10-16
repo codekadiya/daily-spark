@@ -57,6 +57,16 @@ def init():
             if done:
                 conn.execute("TRUNCATE votes, quotes RESTART IDENTITY")
                 print("migration: cleared old quotes for the painting release", flush=True)
+        # One-time: drop narration made with per-quote voices, so every quote is re-read in the single voice.
+        with conn.transaction():
+            done = conn.execute(
+                "INSERT INTO migrations (name) VALUES ('2026-10-single-voice-audio-reset') ON CONFLICT DO NOTHING RETURNING name"
+            ).fetchone()
+            if done:
+                n = conn.execute(
+                    "UPDATE quotes SET audio = NULL, audio_type = NULL, voice = NULL WHERE audio IS NOT NULL"
+                ).rowcount
+                print(f"migration: cleared {n} saved narrations for the single-voice switch", flush=True)
 
 
 def _shape(row):
